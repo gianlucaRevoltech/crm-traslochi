@@ -40,7 +40,8 @@ function loadData(): AppData {
     const raw = localStorage.getItem(STORAGE_KEY)
     if (!raw) return { ...emptyData }
     const parsed = JSON.parse(raw) as AppData
-    const boxes = Array.isArray(parsed.boxes) ? migrateBoxes(parsed.boxes) : []
+    let boxes = Array.isArray(parsed.boxes) ? migrateBoxes(parsed.boxes) : []
+    boxes = purgeOldTombstones(boxes)
     const data: AppData = {
       version: parsed.version ?? 1,
       moveName: parsed.moveName ?? 'Il mio trasloco',
@@ -55,6 +56,16 @@ function loadData(): AppData {
   } catch {
     return { ...emptyData }
   }
+}
+
+// Rimuove i tombstone (pacchi soft-deleted) piu' vecchi di PURGE_MS,
+// cosi' l'archivio non cresce all'infinito. Dopo 7 giorni il tombstone
+// e' stato sicuramente propagato a tutti i dispositivi che si sono sincronizzati.
+const PURGE_MS = 7 * 24 * 60 * 60 * 1000
+
+function purgeOldTombstones(boxes: Box[]): Box[] {
+  const cutoff = Date.now() - PURGE_MS
+  return boxes.filter((b) => !(b.deleted && (b.updatedAt ?? 0) < cutoff))
 }
 
 function maxBoxUpdatedAt(boxes: Box[]): number {
@@ -143,7 +154,7 @@ async function pushRemote(code: string, data: AppData): Promise<void> {
   if (!r.ok) throw new Error('Remote POST failed: ' + r.status)
 }
 
-// --- Merge: per-box last-write-wins ---
+// --- Merge: per-box last-write-wins, incluso il flag deleted (tombstone) ---
 
 function mergeBoxes(local: Box[], remote: Box[]): Box[] {
   const map = new Map<string, Box>()
@@ -154,10 +165,9 @@ function mergeBoxes(local: Box[], remote: Box[]): Box[] {
       map.set(b.id, b)
     }
   }
-  return [...map.values()].sort(
-    (a, b) =>
-      (a.handler !== b.handler ? (a.handler === 'io' ? -1 : 1) : a.number - b.number),
-  )
+  // Merge preserva tutti i tombstone (anche deleted=true); vengono filtrati
+  // lato UI. La purga avviene per eta' in loadData/import.
+  return [...map.values()]
 }
 
 function mergeData(local: AppData, remote: AppData): AppData {
@@ -291,7 +301,14 @@ export function useAppData() {
   }, [])
 
   const deleteBox = useCallback((id: string) => {
-    setData((d) => ({ ...d, boxes: d.boxes.filter((b) => b.id !== id) }))
+    // Soft-delete: marca deleted=true con updatedAt nuovo cosi' la
+    // cancellazione si propaga agli altri dispositivi tramite merge LWW.
+    setData((d) => ({
+      ...d,
+      boxes: d.boxes.map((b) =>
+        b.id === id ? { ...b, deleted: true, updatedAt: Date.now() } : b,
+      ),
+    }))
   }, [])
 
   const toggleStatus = useCallback((id: string) => {

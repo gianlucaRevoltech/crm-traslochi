@@ -26,22 +26,24 @@ function Stat({
 }
 
 export default function Dashboard({ boxes }: Props) {
-  const total = boxes.length
-  const byHandler = (h: Handler) => boxes.filter((b) => b.handler === h)
+  // Ignora i tombstone (soft-deleted) in tutti i conteggi.
+  const active = boxes.filter((b) => !b.deleted)
+  const total = active.length
+  const byHandler = (h: Handler) => active.filter((b) => b.handler === h)
   const io = byHandler('io')
   const ditta = byHandler('ditta')
-  const done = boxes.filter((b) => b.status === 'fatto').length
-  const fragile = boxes.filter((b) => b.fragile).length
+  const done = active.filter((b) => b.status === 'fatto').length
+  const fragile = active.filter((b) => b.fragile).length
 
   // per stanza
-  const perRoom = boxes.reduce<Record<string, number>>((acc, b) => {
+  const perRoom = active.reduce<Record<string, number>>((acc, b) => {
     acc[b.room] = (acc[b.room] ?? 0) + 1
     return acc
   }, {})
   const rooms = Object.entries(perRoom).sort((a, b) => b[1] - a[1])
 
   // conta contenuti
-  const itemTot = boxes.reduce((acc, b) => acc + b.contents.length, 0)
+  const itemTot = active.reduce((acc, b) => acc + b.contents.length, 0)
 
   const progress = total === 0 ? 0 : Math.round((done / total) * 100)
 

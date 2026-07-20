@@ -54,7 +54,9 @@ export default function App() {
   }, [showSettings])
 
   const filtered = useMemo(() => {
-    let list = data.boxes
+    // Escludi i tombstone (pacchi soft-deleted): restano in storage per la
+    // sincronizzazione ma non devono apparire nell'UI.
+    let list = data.boxes.filter((b) => !b.deleted)
     if (filter !== 'all') list = list.filter((b) => b.handler === filter)
     const q = query.trim().toLowerCase()
     if (q) {
@@ -188,7 +190,7 @@ export default function App() {
               <div className="rounded-2xl border-2 border-dashed border-slate-200 py-12 text-center text-slate-400">
                 <Icons.BoxIcon className="mx-auto h-10 w-10 text-slate-300" />
                 <p className="mt-2 text-sm">
-                  {data.boxes.length === 0
+                  {data.boxes.filter((b) => !b.deleted).length === 0
                     ? 'Nessun pacco ancora. Tocca "Aggiungi" per partire!'
                     : 'Nessun risultato per questi filtri.'}
                 </p>

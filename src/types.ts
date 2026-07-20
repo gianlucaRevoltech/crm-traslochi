@@ -13,6 +13,10 @@ export interface Box {
   status: BoxStatus
   createdAt: number
   updatedAt: number
+  // Tombstone per la sincronizzazione: quando deleted=true il pacco e' rimosso
+  // dall'UI ma resta nei dati per poter propagare la cancellazione agli altri
+  // dispositivi (merge last-write-wins su updatedAt).
+  deleted?: boolean
 }
 
 export interface AppData {
