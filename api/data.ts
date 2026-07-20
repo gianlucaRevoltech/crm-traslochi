@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
-import { kv } from '@vercel/kv'
+import { createClient, kv as defaultKv } from '@vercel/kv'
 
 // Serverless function: archivia/apprende lo snapshot dei dati sincronizzati
 // per "codice di sincronizzazione". Il codice funge da namespace isolato:
@@ -8,6 +8,22 @@ import { kv } from '@vercel/kv'
 // Endpoint:
 //   GET  /api/data?code=XXX      -> { data: AppData | null }
 //   POST /api/data?code=XXX      (body: AppData) -> { ok: true }
+
+// @vercel/kv legge KV_REST_API_URL / KV_REST_API_TOKEN di default. Se l'integrazione
+// Upstash marketplace imposta invece UPSTASH_REDIS_REST_URL / UPSTASH_REDIS_REST_TOKEN
+// (tipo "Redis" anziche' "KV"), creiamo un client esplicito con quelle variabili.
+function getKv() {
+  if (process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN) {
+    return defaultKv
+  }
+  const url = process.env.UPSTASH_REDIS_REST_URL
+  const token = process.env.UPSTASH_REDIS_REST_TOKEN
+  if (url && token) {
+    return createClient({ url, token })
+  }
+  // Fallback al default: restituira' l'errore chiaro di @vercel/kv.
+  return defaultKv
+}
 
 const DATA_PREFIX = 'data:'
 
@@ -33,7 +49,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   try {
     if (req.method === 'GET') {
-      const data = await kv.get(key)
+      const data = await getKv().get(key)
       return res.status(200).json({ data })
     }
 
@@ -43,7 +59,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (!body || typeof body !== 'object' || !Array.isArray(body.boxes)) {
         return res.status(400).json({ error: 'Payload non valido' })
       }
-      await kv.set(key, body)
+      await getKv().set(key, body)
       return res.status(200).json({ ok: true })
     }
 
