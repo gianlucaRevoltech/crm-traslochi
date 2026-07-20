@@ -19,4 +19,5 @@ export interface AppData {
   version: number
   moveName: string
   boxes: Box[]
+  updatedAt: number
 }

@@ -46,11 +46,47 @@ npm run preview  # anteprima del build
 
 ## 🔐 Persistenza e limitazioni
 
-- I dati sono salvati **solo nel browser** in cui li inserisci (per dominio).
-- Svuotare la cache / dati sito → i pacchi spariscono. => usa **Export JSON**
-  regolarmente come backup.
-- Per usare gli stessi dati su un altro telefono: esporta su questo, importa
-  sull'altro (nessuna sincronizzazione automatica).
+Doppia modalità:
+
+- **Locale (default)**: i dati sono salvati in `localStorage` del browser.
+  Svuotare la cache li cancella → usa **Export JSON** come backup.
+- **Sincronizzata (facoltativa)**: attivandola nelle Impostazioni, i pacchi
+  vengono salvati anche su **Vercel KV** e condivisi tra tutti i dispositivi che
+  usano lo stesso **codice di sincronizzazione**.
+
+### Setup sincronizzazione (per il deploy)
+
+Nella dashboard Vercel del progetto:
+
+1. **Storage → Create Database → KV** (Upstash). Dai un nome, es. `crm-traslochi-kv`.
+2. Nella scheda del database appena creato: **Connect to Project** → seleziona
+   il progetto `crm-traslochi`. Vercel inietta automaticamente le variabili
+   `KV_REST_API_URL` e `KV_REST_API_TOKEN` (lette da `@vercel/kv`).
+   *Non serve copiarle a mano.*
+3. Ridéploya il progetto (push di un commit o "Redeploy" da Vercel).
+
+> L'API route `/api/data` funziona solo sull'ambiente Vercel dove è collegato KV.
+> In `npm run dev` locale la sync va in errore (è normale) ma l'app resta usabile
+> in modalità locale.
+
+### Uso della sync (utente finale)
+
+1. Su un dispositivo → Impostazioni → attiva "Sincronizzazione dispositivi".
+   Viene **generato un codice** (es. `a1b2-c3d4-e5f6`).
+2. Sugli altri dispositivi → stessa opzione → **inserisci lo stesso codice**.
+3. Tocca "Sincronizza ora" per il primo allineamento; da quel momento le
+   modifiche vengono inviate automaticamente (con qualche secondo di debouncing),
+   e all'apertura dell'app viene scaricata la versione più recente.
+
+> ⚠️ Il codice è una "chiave": **chiunque lo abbia può leggere/modificare i
+> dati**. Usalo come una password, non condividerlo pubblicamente.
+
+#### Come funziona la risoluzione dei conflitti
+
+Merge **per-pacco last-write-wins** usando `updatedAt` di ogni Box: se modifichi
+su due dispositivi offline e poi risincronizzi, vince per ogni pacco la versione
+con timestamp più recente. Pacchi presenti solo da una parte vengono mantenuti.
+Il nome del trasloco segue il dataset più recente overall.
 
 ## ☁️ Deploy su Vercel
 

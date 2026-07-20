@@ -1,5 +1,11 @@
-import { useMemo, useRef, useState } from 'react'
-import { downloadJson, useAppData } from './storage'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import {
+  downloadJson,
+  generateSyncCode,
+  getSyncCode,
+  isSyncEnabled,
+  useAppData,
+} from './storage'
 import type { Box, Handler } from './types'
 import * as Icons from './components/icons'
 import Dashboard from './components/Dashboard'
@@ -19,6 +25,10 @@ export default function App() {
     setMoveName,
     exportData,
     importFromFile,
+    syncNow,
+    applySyncConfig,
+    syncStatus,
+    lastSyncAt,
   } = useAppData()
 
   const [tab, setTab] = useState<Tab>('dashboard')
@@ -27,6 +37,21 @@ export default function App() {
   const [editing, setEditing] = useState<Box | null>(null)
   const [showSettings, setShowSettings] = useState(false)
   const fileInput = useRef<HTMLInputElement>(null)
+
+  // --- Sync UI state (inizializzata da localStorage) ---
+  const [syncOn, setSyncOn] = useState<boolean>(() => isSyncEnabled())
+  const [syncCode, setSyncCodeState] = useState<string>(() => getSyncCode() ?? '')
+  const [syncBusy, setSyncBusy] = useState(false)
+  const [syncMsg, setSyncMsg] = useState<string | null>(null)
+
+  // Quando si apre il modal impostazioni, rilegge la config attuale.
+  useEffect(() => {
+    if (showSettings) {
+      setSyncOn(isSyncEnabled())
+      setSyncCodeState(getSyncCode() ?? '')
+      setSyncMsg(null)
+    }
+  }, [showSettings])
 
   const filtered = useMemo(() => {
     let list = data.boxes
@@ -54,6 +79,44 @@ export default function App() {
     const res = await importFromFile(file)
     if (res.ok) alert('Dati importati ✓')
     else alert('Errore importazione: ' + (res.error ?? 'sconosciuto'))
+  }
+
+  const handleToggleSync = () => {
+    const next = !syncOn
+    setSyncOn(next)
+    if (next && !syncCode.trim()) {
+      // Attivazione senza codice: generane uno nuovo.
+      const c = generateSyncCode()
+      setSyncCodeState(c)
+      applySyncConfig(true, c)
+      setSyncMsg('✅ Sincronizzazione attivata. Salva questo codice e usalo sugli altri dispositivi.')
+    } else {
+      applySyncConfig(next, next ? syncCode.trim() : null)
+      setSyncMsg(next ? null : 'Sincronizzazione disattivata.')
+    }
+  }
+
+  const handleSaveCode = () => {
+    const c = syncCode.trim()
+    if (c.length < 4) {
+      setSyncMsg('Codice troppo corto (min 4 caratteri).')
+      return
+    }
+    applySyncConfig(true, c)
+    setSyncMsg('Codice salvato.')
+  }
+
+  const handleSyncNow = async () => {
+    if (!syncOn || !syncCode.trim()) {
+      setSyncMsg('Attiva la sincronizzazione e inserisci un codice.')
+      return
+    }
+    setSyncBusy(true)
+    setSyncMsg(null)
+    const res = await syncNow()
+    setSyncBusy(false)
+    if (res.ok) setSyncMsg('✅ Sincronizzato!')
+    else setSyncMsg('❌ ' + (res.error ?? 'errore'))
   }
 
   const tabs: { id: Tab; label: string; icon: React.ReactNode }[] = [
@@ -252,9 +315,109 @@ export default function App() {
                 />
               </div>
 
-              <div className="rounded-xl bg-slate-50 p-3 text-xs text-slate-500">
-                ℹ️ I dati sono salvati solo su questo dispositivo/browser. Esporta
-                regolarmente un backup e importalo su un altro dispositivo se serve.
+              {/* Sincronizzazione tra dispositivi (Vercel KV) */}
+              <div className="rounded-2xl border border-slate-200 p-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="text-sm font-semibold text-slate-800">
+                      🔗 Sincronizzazione dispositivi
+                    </div>
+                    <div className="text-xs text-slate-500">
+                      Condividi i pacchi tra più telefoni/computer via codice.
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={syncOn}
+                    onClick={handleToggleSync}
+                    className={`relative h-7 w-12 shrink-0 rounded-full transition ${
+                      syncOn ? 'bg-brand-600' : 'bg-slate-300'
+                    }`}
+                  >
+                    <span
+                      className={`absolute top-0.5 h-6 w-6 rounded-full bg-white shadow transition ${
+                        syncOn ? 'left-5' : 'left-0.5'
+                      }`}
+                    />
+                  </button>
+                </div>
+
+                {syncOn && (
+                  <div className="mt-3 space-y-2">
+                    <label className="text-xs font-medium text-slate-600">
+                      Codice di sincronizzazione
+                    </label>
+                    <div className="flex gap-2">
+                      <input
+                        value={syncCode}
+                        onChange={(e) => setSyncCodeState(e.target.value)}
+                        onBlur={handleSaveCode}
+                        placeholder="es. a1b2-c3d4-e5f6"
+                        className="min-w-0 flex-1 rounded-lg border border-slate-300 px-3 py-2 font-mono text-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/30"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const c = generateSyncCode()
+                          setSyncCodeState(c)
+                          applySyncConfig(true, c)
+                          setSyncMsg('Nuovo codice generato.')
+                        }}
+                        className="shrink-0 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50"
+                      >
+                        Genera
+                      </button>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleSyncNow}
+                      disabled={syncBusy}
+                      className="w-full rounded-xl bg-brand-600 py-2.5 text-sm font-semibold text-white disabled:opacity-50 active:scale-[0.99]"
+                    >
+                      {syncBusy ? 'Sincronizzo…' : '🔄 Sincronizza ora'}
+                    </button>
+                    <div className="text-xs text-slate-500">
+                      Stato:{' '}
+                      <span className="font-medium">
+                        {syncStatus === 'disabled' && 'disattivata'}
+                        {syncStatus === 'idle' && 'in attesa'}
+                        {syncStatus === 'pushing' && 'invio in corso…'}
+                        {syncStatus === 'pulling' && 'ricezione…'}
+                        {syncStatus === 'synced' &&
+                          (lastSyncAt
+                            ? `sincronizzato ${new Date(lastSyncAt).toLocaleTimeString()}`
+                            : 'sincronizzato')}
+                        {syncStatus === 'error' && 'errore (vedi sotto)'}
+                      </span>
+                      {lastSyncAt && syncStatus === 'synced' && (
+                        <button
+                          type="button"
+                          onClick={handleSyncNow}
+                          className="ml-2 underline hover:text-slate-700"
+                        >
+                          aggiorna
+                        </button>
+                      )}
+                    </div>
+                    {syncMsg && (
+                      <div className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-700">
+                        {syncMsg}
+                      </div>
+                    )}
+                    <div className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-700">
+                      ⚠️ Chiunque abbia il codice può leggere/modificare i dati:
+                        non condividerlo pubblicamente.
+                    </div>
+                  </div>
+                )}
+
+                {!syncOn && (
+                  <div className="mt-2 rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-500">
+                    Disattivata: i dati restano solo su questo dispositivo.
+                    Esporta manualmente un JSON per il backup.
+                  </div>
+                )}
               </div>
 
               <div className="grid grid-cols-2 gap-3">
