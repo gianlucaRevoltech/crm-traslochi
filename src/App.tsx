@@ -189,7 +189,7 @@ export default function App() {
       </main>
 
       {/* bottom nav */}
-      <nav className="safe-bottom fixed bottom-0 left-1/2 z-20 w-full max-w-2xl border-t border-slate-200 bg-white/95 backdrop-blur">
+      <nav className="safe-bottom fixed bottom-0 left-1/2 z-20 w-full max-w-2xl -translate-x-1/2 border-t border-slate-200 bg-white/95 backdrop-blur">
         <div className="grid grid-cols-3">
           {tabs.map((t) => {
             const active =

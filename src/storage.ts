@@ -11,16 +11,42 @@ const emptyData: AppData = {
   boxes: [],
 }
 
+// Rinomina stanze legacy nei pacchi già salvati (Sala -> Soggiorno,
+// Camera bambino -> Camera da letto).
+const ROOM_MIGRATION: Record<string, string> = {
+  Sala: 'Soggiorno',
+  'Camera bambino': 'Camera da letto',
+}
+
+function migrateBoxes(boxes: Box[]): Box[] {
+  let changed = false
+  const next = boxes.map((b) => {
+    const mapped = ROOM_MIGRATION[b.room]
+    if (mapped) {
+      changed = true
+      return { ...b, room: mapped }
+    }
+    return b
+  })
+  return changed ? next : boxes
+}
+
 function loadData(): AppData {
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
     if (!raw) return { ...emptyData }
     const parsed = JSON.parse(raw) as AppData
-    return {
+    const boxes = Array.isArray(parsed.boxes) ? migrateBoxes(parsed.boxes) : []
+    const data = {
       version: parsed.version ?? 1,
       moveName: parsed.moveName ?? 'Il mio trasloco',
-      boxes: Array.isArray(parsed.boxes) ? parsed.boxes : [],
+      boxes,
     }
+    // Se la migrazione ha cambiato dati, persisti subito la versione nuova.
+    if (boxes !== parsed.boxes) {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(data))
+    }
+    return data
   } catch {
     return { ...emptyData }
   }

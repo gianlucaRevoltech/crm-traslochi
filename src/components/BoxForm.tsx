@@ -17,7 +17,7 @@ interface Props {
   submitLabel?: string
 }
 
-const ROOMS = ['Cucina', 'Sala', 'Camera da letto', 'Camera bambino', 'Bagno', 'Ripostiglio', 'Garage', 'Altro']
+const ROOMS = ['Cucina', 'Soggiorno', 'Camera da letto', 'Bagno', 'Ripostiglio', 'Garage', 'Ufficio', 'Altro']
 
 const empty = {
   label: '',
